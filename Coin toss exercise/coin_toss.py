@@ -1,5 +1,8 @@
 import matplotlib.pyplot as plt
 from scipy.stats import bernoulli
+import numpy as np
+
+np.random.seed(10)
 
 K = 10000
 max_tosses = 6
@@ -70,9 +73,9 @@ plt.axhline(y=0.03125, color='orange', linestyle='--', label='Theoretical Probab
 # Highlight the final confidence interval area
 plt.fill_between([1, K], lower_bound, upper_bound, color='gray', alpha=0.3, label='Final 95% Confidence Interval')
 
-plt.title('Convergence of Simulated Probability (Using scipy.stats.bernoulli)')
+plt.title('Convergence of Simulated Probability')
 plt.xlabel('Number of Trials (k)')
-plt.ylabel('Probability')
+plt.ylabel('Probability', )
 plt.legend()
 plt.grid(True, alpha=0.3)
 
