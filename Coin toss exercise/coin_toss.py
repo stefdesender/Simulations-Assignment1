@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import bernoulli
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('TkAgg')
 
 np.random.seed(10)
 
