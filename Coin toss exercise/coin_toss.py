@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')  # Gebruik niet-interactieve backend (geen venster nodig)
 import matplotlib.pyplot as plt
 from scipy.stats import bernoulli
 import numpy as np
