@@ -87,7 +87,7 @@ print(f"Margin of Error:         ±{margin_of_error:.5f}")
 plt.figure(figsize=(10, 6))
 
 
-plt.plot(k_values, running_averages, label='Simulated Probability', color='purple', linewidth=1.5)
+plt.plot(k_values, running_averages, label='Running Average', color='purple', linewidth=1.5)
 
 # Plot theoretical probability
 plt.axhline(y=0.03125, color='orange', linestyle='--', label='Theoretical Probability (0.03125)')
