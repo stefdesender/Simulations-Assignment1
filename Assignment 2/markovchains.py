@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats as st
+import pandas as pd
 
 # Define policies
 policies = {
@@ -46,16 +47,29 @@ for p_name, data in policies.items():
             # Record cost
             raw_costs[p_name][k, i1-1] = cost[current_state]
 
+# Dictionaries to store the final results for easy printing
+results_std = []
+results_wu = []
+
 # --- 2. CALCULATION AND PLOTTING ---
 for idx, p_name in enumerate(policies):
     data_raw = raw_costs[p_name] 
     
-    # --- WITHOUT WARMUP ---
+    # ---------------------------------------------------------
+    # WITHOUT WARMUP (Standard)
+    # ---------------------------------------------------------
     run_avg_std = np.cumsum(data_raw, axis=1) / np.arange(1, number_periods + 1)
     mean_std = np.mean(run_avg_std, axis=0)
     se_std = st.sem(run_avg_std, axis=0)
     ci_std = se_std * st.t.ppf((1 + 0.95) / 2., K-1)
     periods_std = np.arange(1, number_periods + 1)
+    
+    # Save the final result at month 1000
+    results_std.append({
+        "Policy": p_name, 
+        "Mean Cost ($)": round(mean_std[-1], 2), 
+        "95% CI (+/-)": round(ci_std[-1], 2)
+    })
     
     fig, ax_std = plt.subplots(figsize=(8, 6))
     ax_std.plot(periods_std, mean_std, label='Mean', color='tab:blue', linewidth=2)
@@ -70,14 +84,24 @@ for idx, p_name in enumerate(policies):
     ax_std.set_ylabel('Cost ($)', fontsize=12)
     ax_std.grid(True, linestyle='--', alpha=0.6)
     
-    # Calculate limits for visual consistency between the two graphs
+    # ---------------------------------------------------------
+    # WITH WARMUP REMOVAL
+    # ---------------------------------------------------------
+    data_warmup = data_raw[:, warmup_period:] 
+    run_avg_wu = np.cumsum(data_warmup, axis=1) / np.arange(1, number_periods - warmup_period + 1)
+    mean_wu = np.mean(run_avg_wu, axis=0)
+    se_wu = st.sem(run_avg_wu, axis=0)
+    ci_wu = se_wu * st.t.ppf((1 + 0.95) / 2., K-1)
+    
+    # Save the final result at the end of the adjusted period
+    results_wu.append({
+        "Policy": p_name, 
+        "Mean Cost ($)": round(mean_wu[-1], 2), 
+        "95% CI (+/-)": round(ci_wu[-1], 2)
+    })
+
+    # Calculate limits for visual consistency
     if p_name != "Policy 3":
-        data_warmup = data_raw[:, warmup_period:] 
-        run_avg_wu = np.cumsum(data_warmup, axis=1) / np.arange(1, number_periods - warmup_period + 1)
-        mean_wu = np.mean(run_avg_wu, axis=0)
-        se_wu = st.sem(run_avg_wu, axis=0)
-        ci_wu = se_wu * st.t.ppf((1 + 0.95) / 2., K-1)
-        
         y_min = min(np.min(mean_std - ci_std), np.min(mean_wu - ci_wu)) - 20
         y_max = max(np.max(mean_std + ci_std), np.max(mean_wu + ci_wu)) + 20
         ax_std.set_ylim(y_min, y_max)
@@ -90,23 +114,19 @@ for idx, p_name in enumerate(policies):
     plt.savefig(filename_no_wu)
     plt.close() # Close figure to free memory
 
-    # --- WITH WARMUP REMOVAL ---
+    # Plotting WITH WARMUP REMOVAL
     fig, ax_wu = plt.subplots(figsize=(8, 6))
+    periods_wu = np.arange(warmup_period + 1, number_periods + 1)
+    
+    ax_wu.plot(periods_wu, mean_wu, label='Mean', color='tab:blue', linewidth=2)
     
     if p_name != "Policy 3":
-        periods_wu = np.arange(warmup_period + 1, number_periods + 1)
-        ax_wu.plot(periods_wu, mean_wu, label='Mean', color='tab:blue', linewidth=2)
         ax_wu.plot(periods_wu, mean_wu + ci_wu, label='CI+', color='tab:red', linestyle='--', linewidth=1)
         ax_wu.plot(periods_wu, mean_wu - ci_wu, label='CI-', color='tab:green', linestyle='--', linewidth=1)
         ax_wu.fill_between(periods_wu, mean_wu - ci_wu, mean_wu + ci_wu, color='gray', alpha=0.2)
         ax_wu.set_ylim(y_min, y_max)
         ax_wu.legend()
     else:
-        periods_wu = np.arange(warmup_period + 1, number_periods + 1)
-        data_warmup = data_raw[:, warmup_period:]
-        run_avg_wu = np.cumsum(data_warmup, axis=1) / np.arange(1, number_periods - warmup_period + 1)
-        mean_wu = np.mean(run_avg_wu, axis=0)
-        ax_wu.plot(periods_wu, mean_wu, label='Mean', color='tab:blue', linewidth=2)
         ax_wu.set_ylim(550, 650)
     
     ax_wu.set_title(f'{p_name}: Running Average (WITH Warm-up Removal > {warmup_period})', fontsize=14)
@@ -119,4 +139,14 @@ for idx, p_name in enumerate(policies):
     plt.savefig(filename_wu)
     plt.close()
 
-print("All 8 graphs have been successfully generated and saved!")
+# --- 3. PRINT NUMERICAL RESULTS ---
+print("All 8 graphs have been successfully generated and saved!\n")
+
+df_std = pd.DataFrame(results_std)
+print("--- FINAL RESULTS (NO WARM-UP REMOVAL) ---")
+print(df_std.to_string(index=False))
+print("\n")
+
+df_wu = pd.DataFrame(results_wu)
+print("--- FINAL RESULTS (WITH 100-MONTH WARM-UP REMOVED) ---")
+print(df_wu.to_string(index=False))
