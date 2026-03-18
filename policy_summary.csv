@@ -1,0 +1,5 @@
+policy,description,analytic_cycle_cost,analytic_cycle_length,analytic_monthly_cost,simulation_mean,simulation_stdev,halfwidth_95,ci_low,ci_high
+Policy 0,No preventive replacement,1500.0,2.98,503.355705,502.761628,2.132075,0.681871,502.079757,503.443498
+Policy 1,Replace at start of month 4,1140.0,2.62,435.114504,435.739525,4.443209,1.421007,434.318518,437.160532
+Policy 2,Replace at start of month 3,780.0,1.9,410.526316,410.744537,3.482658,1.113808,409.630729,411.858345
+Policy 3,Replace at start of month 2,600.0,1.0,600.0,599.736868,3.10472,0.992938,598.743931,600.729806
