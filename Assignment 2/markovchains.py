@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import scipy.stats as st
 import pandas as pd
 
-# Define policies
+# Policies
 policies = {
     "Policy 0": {"P": np.array([[0.1, 0.9, 0.0, 0.0], [0.2, 0.0, 0.8, 0.0], [0.5, 0.0, 0.0, 0.5], [1.0, 0.0, 0.0, 0.0]]), "cost": [600, 200, 500, 1000]},
     "Policy 1": {"P": np.array([[0.1, 0.9, 0.0], [0.2, 0.0, 0.8], [1.0, 0.0, 0.0]]), "cost": [600, 200, 500]},
@@ -13,11 +13,9 @@ policies = {
 
 number_periods = 1000
 K = 20
-warmup_period = 100
-window_size = 30 # For Welch's moving average smoothing
-np.random.seed(42) # For reproducible results
+window_size = 15 # Window for Welch's moving average smoothing
+np.random.seed(42)
 
-# Matrix to store the exact cost incurred IN EACH MONTH
 # Shape: (K runs, N periods)
 raw_costs = {p: np.zeros((K, number_periods)) for p in policies}
 
@@ -31,54 +29,75 @@ for p_name, data in policies.items():
     F_s0[0] = 1.0
 
     for k in range(K):
-        # Initial state
         r = np.random.rand()
         i2 = 0
         while i2 < nr_states - 1 and r > F_s0[i2]: i2 += 1
         current_state = i2
         
         for i1 in range(1, number_periods + 1):
-            # Next state
             r = np.random.rand()
             next_state = 0
             while next_state < nr_states - 1 and r > F[current_state][next_state]:
                 next_state += 1
             current_state = next_state
             
-            # Record raw cost
             raw_costs[p_name][k, i1-1] = cost[current_state]
+
+
+# --- 2. DYNAMICALLY DETERMINE WARM-UP PERIOD (Multiple Replication Method) ---
+# We use Policy 0 as it has the most states and takes the longest to stabilize
+ensemble_avg_p0 = np.mean(raw_costs["Policy 0"], axis=0)
+smoothed_avg_p0 = pd.Series(ensemble_avg_p0).rolling(window=window_size, min_periods=1).mean().values
+
+# Find the long-term steady-state mean (average of the last 500 periods)
+long_term_mean = np.mean(smoothed_avg_p0[500:])
+
+# Define a strict tolerance band (e.g., within 2% of the long-term mean)
+tolerance = 0.02 * long_term_mean
+
+# Scan the smoothed curve to find where it permanently enters the tolerance band
+determined_warmup = 1
+for i in range(len(smoothed_avg_p0) - 50):
+    # Check if the next 50 periods all stay within the tolerance band
+    if np.all(np.abs(smoothed_avg_p0[i:i+50] - long_term_mean) < tolerance):
+        determined_warmup = i
+        break
+
+# We now have a scientifically backed warm-up period!
+warmup_period = max(determined_warmup, 1) # Ensure it is at least 1
+print(f"*** Welch's Analysis Complete ***")
+print(f"The algorithm determined the system reaches steady-state at Month {warmup_period}.")
+print(f"Applying w={warmup_period} to all subsequent Confidence Interval calculations...\n")
 
 results_std = []
 results_wu = []
 
-# --- 2. MULTIPLE REPLICATION METHOD & PLOTTING ---
+# --- 3. CALCULATIONS & PLOTTING ---
 for idx, p_name in enumerate(policies):
     data_raw = raw_costs[p_name] 
     
     # =========================================================
     # GRAPH A: MULTIPLE REPLICATION METHOD (Welch's Warm-up Check)
     # =========================================================
-    # Step 1: Ensemble Average across K runs for each time t
     ensemble_avg = np.mean(data_raw, axis=0)
-    # Step 2: Smoothed Moving Average
     smoothed_avg = pd.Series(ensemble_avg).rolling(window=window_size, min_periods=1).mean().values
     
     fig, ax_welch = plt.subplots(figsize=(8, 6))
     periods_all = np.arange(1, number_periods + 1)
     
     ax_welch.plot(periods_all, ensemble_avg, color='gray', alpha=0.3, label=f'Raw Ensemble Avg (K={K})')
-    if p_name != "Policy 3": # Policy 3 has no variance to smooth
+    if p_name != "Policy 3": 
         ax_welch.plot(periods_all, smoothed_avg, color='tab:red', linewidth=3, label=f'Smoothed Moving Avg (Window={window_size})')
     
-    ax_welch.axvline(x=warmup_period, color='black', linestyle='--', linewidth=2, label=f'Warm-up Cutoff (w={warmup_period})')
+    # Draw the dynamically discovered line
+    ax_welch.axvline(x=warmup_period, color='black', linestyle='--', linewidth=2, label=f'Determined Warm-up (w={warmup_period})')
     ax_welch.set_title(f'{p_name}: Welch\'s Multiple Replication Method', fontsize=14)
     ax_welch.set_xlabel('Simulation Period (Months)', fontsize=12)
     ax_welch.set_ylabel('Average Cost ($)', fontsize=12)
     ax_welch.grid(True, linestyle='--', alpha=0.6)
     ax_welch.legend()
-    
     plt.tight_layout()
-    plt.savefig(f"Graph_{idx+1}A_{p_name.replace(' ', '_')}_Welch_Warmup.png")
+    plt.savefig(f"Graph_{idx+1}A_{p_name.replace(' ', '_')}_Welch.png")
     plt.close()
 
     # =========================================================
@@ -91,8 +110,9 @@ for idx, p_name in enumerate(policies):
     
     results_std.append({
         "Policy": p_name, 
-        "Grand Mean Cost ($)": round(mean_std[-1], 2), 
-        "95% CI (+/-)": round(ci_std[-1], 2)
+        "Grand Mean Cost ($)": f"{mean_std[-1]:.2f}", 
+        "95% CI (+/-)": f"{ci_std[-1]:.2f}",
+        "95% CI Interval": f"[{mean_std[-1] - ci_std[-1]:.2f}, {mean_std[-1] + ci_std[-1]:.2f}]"
     })
     
     fig, ax_std = plt.subplots(figsize=(8, 6))
@@ -108,7 +128,6 @@ for idx, p_name in enumerate(policies):
     ax_std.set_ylabel('Cost ($)', fontsize=12)
     ax_std.grid(True, linestyle='--', alpha=0.6)
     
-    # Calculate limits for visual consistency
     data_warmup = data_raw[:, warmup_period:] 
     run_avg_wu = np.cumsum(data_warmup, axis=1) / np.arange(1, number_periods - warmup_period + 1)
     mean_wu = np.mean(run_avg_wu, axis=0)
@@ -121,8 +140,8 @@ for idx, p_name in enumerate(policies):
         ax_std.set_ylim(y_min, y_max)
         ax_std.legend()
     else:
-        ax_std.set_ylim(550, 650)
-        
+        ax_std.set_ylim(550, 650)  
+    
     plt.tight_layout()
     plt.savefig(f"Graph_{idx+1}B_{p_name.replace(' ', '_')}_NO_warmup.png")
     plt.close() 
@@ -132,8 +151,9 @@ for idx, p_name in enumerate(policies):
     # =========================================================
     results_wu.append({
         "Policy": p_name, 
-        "Grand Mean Cost ($)": round(mean_wu[-1], 2), 
-        "95% CI (+/-)": round(ci_wu[-1], 2)
+        "Grand Mean Cost ($)": f"{mean_wu[-1]:.2f}", 
+        "95% CI (+/-)": f"{ci_wu[-1]:.2f}",
+        "95% CI Interval": f"[{mean_wu[-1] - ci_wu[-1]:.2f}, {mean_wu[-1] + ci_wu[-1]:.2f}]"
     })
 
     fig, ax_wu = plt.subplots(figsize=(8, 6))
@@ -150,18 +170,16 @@ for idx, p_name in enumerate(policies):
     else:
         ax_wu.set_ylim(550, 650)
     
-    ax_wu.set_title(f'{p_name}: Running Average (WITH Warm-up Removal > {warmup_period})', fontsize=14)
+    ax_wu.set_title(f'{p_name}: Running Average (WITH w={warmup_period} Removed)', fontsize=14)
     ax_wu.set_xlabel('Month', fontsize=12)
     ax_wu.set_ylabel('Cost ($)', fontsize=12)
     ax_wu.grid(True, linestyle='--', alpha=0.6)
-    
+    ax_wu.set_xlim(warmup_period, number_periods)
     plt.tight_layout()
     plt.savefig(f"Graph_{idx+1}C_{p_name.replace(' ', '_')}_WITH_warmup.png")
     plt.close()
 
-# --- 3. PRINT NUMERICAL RESULTS ---
-print("All 12 Multiple Replication graphs have been successfully generated and saved!\n")
-
+# --- 4. PRINT NUMERICAL RESULTS ---
 df_std = pd.DataFrame(results_std)
 print("--- MULTIPLE REPLICATION RESULTS (NO WARM-UP REMOVAL) ---")
 print(df_std.to_string(index=False))
