@@ -13,7 +13,10 @@ policies = {
 
 number_periods = 1000
 K = 20
-window_size = 15 # Window for Welch's moving average smoothing
+
+# Setting a conservative, safe warm-up period based on visual inspection
+warmup_period = 100 
+window_size = 20 # Window for Welch's moving average smoothing
 np.random.seed(42)
 
 # Shape: (K runs, N periods)
@@ -43,36 +46,10 @@ for p_name, data in policies.items():
             
             raw_costs[p_name][k, i1-1] = cost[current_state]
 
-
-# --- 2. DYNAMICALLY DETERMINE WARM-UP PERIOD (Multiple Replication Method) ---
-# We use Policy 0 as it has the most states and takes the longest to stabilize
-ensemble_avg_p0 = np.mean(raw_costs["Policy 0"], axis=0)
-smoothed_avg_p0 = pd.Series(ensemble_avg_p0).rolling(window=window_size, min_periods=1).mean().values
-
-# Find the long-term steady-state mean (average of the last 500 periods)
-long_term_mean = np.mean(smoothed_avg_p0[500:])
-
-# Define a strict tolerance band (e.g., within 2% of the long-term mean)
-tolerance = 0.02 * long_term_mean
-
-# Scan the smoothed curve to find where it permanently enters the tolerance band
-determined_warmup = 1
-for i in range(len(smoothed_avg_p0) - 50):
-    # Check if the next 50 periods all stay within the tolerance band
-    if np.all(np.abs(smoothed_avg_p0[i:i+50] - long_term_mean) < tolerance):
-        determined_warmup = i
-        break
-
-# We now have a scientifically backed warm-up period!
-warmup_period = max(determined_warmup, 1) # Ensure it is at least 1
-print(f"*** Welch's Analysis Complete ***")
-print(f"The algorithm determined the system reaches steady-state at Month {warmup_period}.")
-print(f"Applying w={warmup_period} to all subsequent Confidence Interval calculations...\n")
-
 results_std = []
 results_wu = []
 
-# --- 3. CALCULATIONS & PLOTTING ---
+# --- 2. CALCULATIONS & PLOTTING ---
 for idx, p_name in enumerate(policies):
     data_raw = raw_costs[p_name] 
     
@@ -89,8 +66,7 @@ for idx, p_name in enumerate(policies):
     if p_name != "Policy 3": 
         ax_welch.plot(periods_all, smoothed_avg, color='tab:red', linewidth=3, label=f'Smoothed Moving Avg (Window={window_size})')
     
-    # Draw the dynamically discovered line
-    ax_welch.axvline(x=warmup_period, color='black', linestyle='--', linewidth=2, label=f'Determined Warm-up (w={warmup_period})')
+    ax_welch.axvline(x=warmup_period, color='black', linestyle='--', linewidth=2, label=f'Chosen Warm-up (w={warmup_period})')
     ax_welch.set_title(f'{p_name}: Welch\'s Multiple Replication Method', fontsize=14)
     ax_welch.set_xlabel('Simulation Period (Months)', fontsize=12)
     ax_welch.set_ylabel('Average Cost ($)', fontsize=12)
@@ -179,7 +155,7 @@ for idx, p_name in enumerate(policies):
     plt.savefig(f"Graph_{idx+1}C_{p_name.replace(' ', '_')}_WITH_warmup.png")
     plt.close()
 
-# --- 4. PRINT NUMERICAL RESULTS ---
+# --- 3. PRINT NUMERICAL RESULTS ---
 df_std = pd.DataFrame(results_std)
 print("--- MULTIPLE REPLICATION RESULTS (NO WARM-UP REMOVAL) ---")
 print(df_std.to_string(index=False))
