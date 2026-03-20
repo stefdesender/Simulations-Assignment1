@@ -138,7 +138,7 @@ for idx, p_name in enumerate(policies):
     ax_std.set_xlabel('Month', fontsize=12)
     ax_std.set_ylabel('Cost ($)', fontsize=12)
     ax_std.grid(True, linestyle='--', alpha=0.6)
-    
+
     data_warmup = data_raw[:, warmup_period:] 
     run_avg_wu = np.cumsum(data_warmup, axis=1) / np.arange(1, number_periods - warmup_period + 1)
     mean_wu = np.mean(run_avg_wu, axis=0)
@@ -160,6 +160,7 @@ for idx, p_name in enumerate(policies):
     # =========================================================
     # GRAPH C: WITH WARMUP REMOVAL (Multiple Replication CI)
     # =========================================================
+
     results_wu.append({
         "Policy": p_name, 
         "Grand Mean Cost ($)": f"{mean_wu[-1]:.2f}", 
@@ -199,3 +200,35 @@ print("\n")
 df_wu = pd.DataFrame(results_wu)
 print(f"--- MULTIPLE REPLICATION RESULTS (WITH {warmup_period}-MONTH WARM-UP REMOVED) ---")
 print(df_wu.to_string(index=False))
+
+# --- 4. EXPORT WARM-UP RESULTS TO EXCEL ---
+with pd.ExcelWriter("steady_state_results.xlsx") as writer:
+    for idx, p_name in enumerate(policies):
+        data_raw = raw_costs[p_name]
+        data_warmup = data_raw[:, warmup_period:]
+        n_periods_wu = number_periods - warmup_period
+
+        run_avg_wu = np.cumsum(data_warmup, axis=1) / np.arange(1, n_periods_wu + 1)
+        mean_wu    = np.mean(run_avg_wu, axis=0)
+        se_wu      = st.sem(run_avg_wu, axis=0)
+        ci_wu      = se_wu * st.t.ppf((1 + 0.95) / 2., K - 1)
+
+        periods_wu = np.arange(warmup_period + 1, number_periods + 1)
+
+        # One row per period
+        df = pd.DataFrame({
+            "Period":       periods_wu,
+            "Mean":         mean_wu,
+            "SE":           se_wu,
+            "CI_95":        ci_wu,
+            "CI_lower":     mean_wu - ci_wu,
+            "CI_upper":     mean_wu + ci_wu,
+        })
+
+        # One column per replication run
+        for k in range(K):
+            df[f"Run_{k+1}_running_avg"] = run_avg_wu[k]
+
+        df.to_excel(writer, sheet_name=p_name, index=False)
+
+print("Exported steady_state_results.xlsx")
