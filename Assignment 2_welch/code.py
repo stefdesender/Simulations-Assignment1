@@ -49,38 +49,17 @@ for p_name, data in policies.items():
 results_std = []
 results_wu = []
 def welch_moving_average(series, w):
-    """
-    Welch moving average using 0-based indexing.
-
-    Parameters
-    ----------
-    series : 1D array-like
-        The time series to smooth
-    w : int
-        Welch window size
-
-    Returns
-    -------
-    np.ndarray
-        Smoothed series
-    """
     series = np.asarray(series, dtype=float)
     T = len(series)
-    smoothed = np.zeros(T)
+    smoothed = np.zeros(T - w)  # only T-w values, no right-edge shrinkage
 
-    for t in range(T):   # t = 0, 1, ..., T-1
+    for t in range(T - w):     # t = 0, 1, ..., T-w-1
         if t < w:
-            # beginning: use periods 0 ... 2t
+            # beginning: growing window, periods 0 ... 2t
             smoothed[t] = np.mean(series[0 : 2*t + 1])
-
-        elif t <= T - w - 1:
-            # middle: use periods t-w ... t+w
-            smoothed[t] = np.mean(series[t - w : t + w + 1])
-
         else:
-            # end: use symmetric window that fits, periods 2t-T+1 ... T-1
-            start_idx = 2*t - T + 1
-            smoothed[t] = np.mean(series[start_idx : T])
+            # middle: full symmetric window, periods t-w ... t+w
+            smoothed[t] = np.mean(series[t - w : t + w + 1])
 
     return smoothed
 # --- 2. CALCULATIONS & PLOTTING ---
@@ -95,6 +74,7 @@ for idx, p_name in enumerate(policies):
     smoothed_avg = welch_moving_average(ensemble_avg, window_size)
     fig, ax_welch = plt.subplots(figsize=(8, 6))
     periods_all = np.arange(1, number_periods + 1)
+    periods_trimmed=periods_all[:len(smoothed_avg)]
 
     ax_welch.plot(
         periods_all,
@@ -106,7 +86,7 @@ for idx, p_name in enumerate(policies):
     )
 
     ax_welch.plot(
-        periods_all,
+        periods_trimmed,
         smoothed_avg,
         color="tab:red",
         linewidth=2.5,
